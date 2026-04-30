@@ -1,0 +1,10 @@
+image:
+  repository: 044272078619.dkr.ecr.us-east-1.amazonaws.com/myapp
+  tag: latest
+  pullPolicy: Always
+
+service:
+  type: LoadBalancer
+  port: 5000
+
+replicaCount: 1

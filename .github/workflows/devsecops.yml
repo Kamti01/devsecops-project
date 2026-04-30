@@ -1,0 +1,50 @@
+name: DevSecOps Pipeline
+on:
+  push:
+    branches: [master]
+
+env:
+  ECR_URL: 044272078619.dkr.ecr.us-east-1.amazonaws.com
+  AWS_REGION: us-east-1
+
+jobs:
+  devsecops:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Build Docker Image
+      run: docker build -t myapp:${{ github.sha }} .
+
+    - name: Trivy Scan
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: myapp:${{ github.sha }}
+        exit-code: '0'
+        severity: 'CRITICAL,HIGH'
+        format: 'table'
+
+    - name: Push to ECR
+      run: |
+        aws ecr get-login-password | docker login \
+          --username AWS \
+          --password-stdin $ECR_URL
+        docker tag myapp:${{ github.sha }} $ECR_URL/myapp:${{ github.sha }}
+        docker push $ECR_URL/myapp:${{ github.sha }}
+
+    - name: Deploy to EKS
+      run: |
+        aws eks update-kubeconfig \
+          --name devsecops-cluster \
+          --region $AWS_REGION
+        helm upgrade --install devsecops-app ./helm-chart \
+          --set image.repository=$ECR_URL/myapp \
+          --set image.tag=${{ github.sha }}
